@@ -1,0 +1,7 @@
+{
+  "appId": "com.example.mekanikkuleler",
+  "appName": "Mekanik Kuleler",
+  "webDir": "www",
+  "backgroundColor": "#d3dee8",
+  "android": { "allowMixedContent": false }
+}

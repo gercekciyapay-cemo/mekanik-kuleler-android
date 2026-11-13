@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Mekanik Kuleler — 3D Bulmaca</title>
+<style>
+  :root{ --ink:#3d4756; --glass:rgba(255,255,255,.66); --accent:#ff5a4d; --blue:#3d8bff; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{
+    margin:0; height:100%; overflow:hidden; color:var(--ink);
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,Helvetica,Arial,sans-serif;
+    background:radial-gradient(ellipse at 50% 28%,#f1f5f9 0%,#d3dee8 55%,#a9bccb 100%);
+    user-select:none; -webkit-user-select:none;
+  }
+  #app{ position:fixed; inset:0; }
+  #app canvas{ display:block; touch-action:none; outline:none; }
+
+  /* ---- HUD ---- */
+  #hud{ position:fixed; top:14px; left:14px; display:flex; flex-direction:column; gap:8px; pointer-events:none; z-index:5; }
+  .chip{
+    background:var(--glass); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    border-radius:999px; padding:7px 14px; font-size:14px; font-weight:600;
+    box-shadow:0 4px 14px rgba(60,80,100,.15); width:fit-content; white-space:nowrap;
+  }
+  .chip b{ color:#1f2937; }
+  .chip.ok{ background:rgba(214,246,222,.85); }
+  #topright{ position:fixed; top:14px; right:14px; display:flex; gap:10px; z-index:6; }
+  .icon{
+    width:46px; height:46px; border:none; border-radius:14px; cursor:pointer; color:#465163;
+    background:var(--glass); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    box-shadow:0 4px 14px rgba(60,80,100,.18); display:grid; place-items:center; transition:transform .12s, background .12s;
+  }
+  .icon:hover{ background:rgba(255,255,255,.9); transform:translateY(-1px); }
+  .icon:active{ transform:scale(.94); }
+  #hint{
+    position:fixed; left:50%; bottom:14px; transform:translateX(-50%); font-size:12.5px; opacity:.75;
+    background:var(--glass); padding:6px 14px; border-radius:999px; pointer-events:none; text-align:center; z-index:4;
+  }
+  #toast{
+    position:fixed; left:50%; bottom:64px; transform:translate(-50%,16px); opacity:0; pointer-events:none; z-index:7;
+    background:rgba(40,50,66,.88); color:#fff; padding:10px 18px; border-radius:14px; font-size:14px; font-weight:600;
+    transition:opacity .25s, transform .25s; max-width:90vw; text-align:center;
+  }
+  #toast.show{ opacity:1; transform:translate(-50%,0); }
+
+  /* ---- Katmanlar ---- */
+  .overlay{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:20; padding:18px; }
+  .overlay.show{ display:flex; animation:fade .35s ease; }
+  .overlay.dim{ background:rgba(200,214,226,.55); backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); }
+  .overlay.free{ pointer-events:none; align-items:flex-start; padding-top:9vh; }
+  .overlay.free .card{ pointer-events:auto; }
+  .card{
+    background:rgba(255,255,255,.92); border-radius:26px; padding:28px 30px; text-align:center; max-width:420px; width:100%;
+    box-shadow:0 20px 60px rgba(40,60,90,.28);
+  }
+  .card h1{ margin:0 0 6px; font-size:30px; letter-spacing:-.5px; color:#2a3444; }
+  .card h2{ margin:0 0 6px; font-size:28px; color:#2a3444; }
+  .card p{ margin:8px 0; line-height:1.5; font-size:15px; }
+  .card ul{ text-align:left; margin:14px auto; padding-left:20px; font-size:14.5px; line-height:1.7; }
+  .btn{
+    border:none; cursor:pointer; font:inherit; font-weight:700; font-size:16px; color:#fff; padding:12px 28px; margin:8px 5px 0;
+    border-radius:14px; background:linear-gradient(180deg,#ff7a5c,#ff4d4d); box-shadow:0 6px 18px rgba(255,77,77,.38);
+    transition:transform .12s;
+  }
+  .btn:hover{ transform:translateY(-2px); }
+  .btn.alt{ background:linear-gradient(180deg,#8d9bb0,#6b7a91); box-shadow:0 6px 18px rgba(80,95,120,.3); }
+  #stars{ font-size:46px; letter-spacing:6px; margin:6px 0 2px; }
+  #stars span{ color:#d4dae2; display:inline-block; transform:scale(.6); transition:all .5s cubic-bezier(.2,1.6,.4,1); }
+  #stars span.on{ color:#ffc42e; transform:scale(1); text-shadow:0 3px 10px rgba(255,170,0,.45); }
+  .logo{ font-size:46px; }
+  html,body{ overscroll-behavior:none; touch-action:none; }
+  @media (pointer:coarse){ #hint{ display:none; } #hud{ top:max(14px, env(safe-area-inset-top)); left:max(14px, env(safe-area-inset-left)); } #topright{ top:max(14px, env(safe-area-inset-top)); right:max(14px, env(safe-area-inset-right)); } }
+  .card.wide{ max-width:540px; }
+  .lvgrid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:16px 0 8px; }
+  .lv{
+    position:relative; border:none; cursor:pointer; font:inherit; text-align:left; padding:14px 14px 12px; border-radius:18px;
+    background:#fff; color:var(--ink); box-shadow:0 6px 18px rgba(60,80,100,.18); display:flex; flex-direction:column; gap:5px;
+    transition:transform .12s, box-shadow .12s;
+  }
+  .lv:hover{ transform:translateY(-2px); box-shadow:0 10px 24px rgba(60,80,100,.26); }
+  .lv .n{ position:absolute; top:6px; right:14px; font-size:34px; font-weight:800; opacity:.12; }
+  .lv b{ font-size:15px; color:#2a3444; }
+  .lv .d{ font-style:normal; font-size:11.5px; font-weight:700; padding:2px 10px; border-radius:999px; width:fit-content; color:#fff; }
+  .d0{ background:#4cc38a; } .d1{ background:#f0a93b; } .d2{ background:#ef6a4d; } .d3{ background:#8a5cf0; }
+  .lv .s{ font-size:19px; letter-spacing:2px; color:#ffc42e; } .lv .s i{ font-style:normal; color:#d4dae2; }
+  @keyframes fade{ from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none} }
+  @media (max-width:520px){ .chip{ font-size:12.5px; padding:6px 11px; } #hint{ font-size:11px; width:92vw; white-space:normal; } }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="hud">
+  <div class="chip" id="levelChip">🏰 Bölüm</div>
+  <div class="chip" id="bridgeChip">🔘 Düğme: <b>0/0</b></div>
+  <div class="chip">👣 Adım: <b id="steps">0</b></div>
+</div>
+
+<div id="topright">
+  <button class="icon" id="btnRestart" title="Yeniden başlat (R)" aria-label="Yeniden başlat">
+    <svg viewBox="0 0 24 24" width="24" height="24"><path d="M20 12a8 8 0 1 1-2.7-6" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><path d="M20.5 3.5V8.5H15.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <button class="icon" id="btnPause" title="Duraklat (Esc)" aria-label="Duraklat">
+    <svg viewBox="0 0 24 24" width="26" height="26"><rect x="5" y="4" width="5" height="16" rx="1.6" fill="currentColor"/><rect x="14" y="4" width="5" height="16" rx="1.6" fill="currentColor"/></svg>
+  </button>
+</div>
+
+<div id="hint">Tıkla: yürü &nbsp;•&nbsp; Sürükle: döndür &nbsp;•&nbsp; Tekerlek / çimdik: yakınlaştır &nbsp;•&nbsp; Ok tuşları / WASD &nbsp;•&nbsp; ⚠ Boşluğa veya suya düşersen baştan başlarsın</div>
+<div id="toast"></div>
+
+<!-- Giriş -->
+<div class="overlay dim show" id="intro">
+  <div class="card">
+    <div class="logo">🤖</div>
+    <h1>Mekanik Kuleler</h1>
+    <p>Küçük robotu kulelerin arasından geçirip <b style="color:#e0372d">kırmızı düğmeye</b> ulaştır. <b>4 bölüm</b>, artan zorluk.</p>
+    <ul>
+      <li>Bir bloğa <b>tıkla</b>, robot oraya yürüsün.</li>
+      <li>Sahneyi <b>sürükleyerek</b> döndür, keşfet.</li>
+      <li>Dikkat: suya veya boşluğa <b>düşersen</b> bölüm baştan başlar!</li>
+      <li>Renkli <b>düğmeler</b> gizli köprüleri açar — çizgilerle gösterilen yerleri takip et.</li>
+    </ul>
+    <button class="btn" id="btnPlay">Oyna</button>
+    <button class="btn alt" id="btnLevels">Bölümler</button>
+  </div>
+</div>
+
+<!-- Duraklatma -->
+<div class="overlay dim" id="pauseMenu">
+  <div class="card">
+    <h2>Duraklatıldı</h2>
+    <p>Hazır olduğunda devam et.</p>
+    <button class="btn" id="btnResume">Devam Et</button>
+    <button class="btn alt" id="btnRestart2">Baştan Başla</button>
+    <button class="btn alt" id="btnLevels2">Bölümler</button>
+  </div>
+</div>
+
+<!-- Bölüm tamamlandı -->
+<div class="overlay free" id="complete">
+  <div class="card">
+    <h2 id="completeTitle">🎉 Bölüm Tamamlandı!</h2>
+    <div id="stars"><span>★</span><span>★</span><span>★</span></div>
+    <p id="stats"></p>
+    <button class="btn" id="btnNext">Sonraki Bölüm ▶</button>
+    <button class="btn alt" id="btnAgain">Tekrar</button>
+    <button class="btn alt" id="btnLevels3">Bölümler</button>
+  </div>
+</div>
+
+<!-- Düşme -->
+<div class="overlay free" id="failed">
+  <div class="card">
+    <h2 id="failTitle">💦 Düştün!</h2>
+    <p>Bölüm baştan başlıyor…</p>
+    <button class="btn" id="btnRetry">Hemen Tekrar Dene</button>
+  </div>
+</div>
+
+<!-- Bölüm seçimi -->
+<div class="overlay dim" id="levels">
+  <div class="card wide">
+    <h2>Bölümler</h2>
+    <p style="opacity:.75;margin-top:0">Zorluk arttıkça düğme ve köprü sayısı artıyor.</p>
+    <div class="lvgrid" id="lvgrid"></div>
+    <button class="btn alt" id="btnLevelsBack">Geri</button>
+  </div>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="lib/OrbitControls.js"></script>
+<script>
+(() => {
+'use strict';
+
+/* =====================================================================
+   0) YARDIMCILAR
+   ===================================================================== */
+const $ = s => document.querySelector(s);
+const KEY = (x, y, z) => x + ',' + y + ',' + z;
+const DIRS = [[1,0],[-1,0],[0,1],[0,-1]];
+const easeOutBack = t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+function mulberry32(a){ return function(){ let t = a += 0x6D2B79F5; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+let actx = null;
+function beep(f, d = .1, type = 'sine', v = .05, delay = 0){
+  try{
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const t = actx.currentTime + delay, o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.0001, t + d);
+    o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + d + .02);
+  }catch(e){}
+}
+
+function sweep(f0, f1, d = .5, type = 'sine', v = .05, delay = 0){
+  try{
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const t = actx.currentTime + delay, o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + d);
+    g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.0001, t + d);
+    o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + d + .02);
+  }catch(e){}
+}
+
+let toastTimer = null;
+function toast(msg, ms = 2800){
+  const el = $('#toast'); el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), ms);
+}
+
+/* =====================================================================
+   1) RENDERER / SAHNE / KAMERA / IŞIK
+   ===================================================================== */
+const container = $('#app');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+container.appendChild(renderer.domElement);
+const dom = renderer.domElement;
+
+const scene = new THREE.Scene();
+const CENTER = new THREE.Vector3(5.5, 3.4, 5.5);
+
+// Ortografik kamera = gerçek izometrik görünüm
+const camera = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 200);
+camera.position.copy(CENTER).add(new THREE.Vector3(24, 24, 24));
+camera.lookAt(CENTER);
+
+const controls = new THREE.OrbitControls(camera, dom);
+controls.target.copy(CENTER);
+controls.enablePan = false;
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.rotateSpeed = 0.7;
+controls.minZoom = 0.7;
+controls.maxZoom = 2.4;
+controls.minPolarAngle = 0.35;
+controls.maxPolarAngle = 1.38;
+controls.update();
+
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight, a = w / h;
+  renderer.setSize(w, h);
+  const base = 10.5;
+  const hh = a >= 1 ? base : base / a;
+  const hw = hh * a;
+  camera.left = -hw; camera.right = hw; camera.top = hh; camera.bottom = -hh;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Işıklar: yumuşak pastel atmosfer
+scene.add(new THREE.HemisphereLight(0xffffff, 0xc8b8a8, 0.68));
+const sun = new THREE.DirectionalLight(0xfff0dc, 0.62);
+sun.position.copy(CENTER).add(new THREE.Vector3(10, 24, 6));
+sun.target.position.copy(CENTER);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -14; sun.shadow.camera.right = 14;
+sun.shadow.camera.top = 14;  sun.shadow.camera.bottom = -14;
+sun.shadow.camera.near = 1;  sun.shadow.camera.far = 70;
+sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
+scene.add(sun, sun.target);
+
+/* =====================================================================
+   2) DOKULAR (Canvas ile üretilir, harici dosya yok)
+   ===================================================================== */
+function canvasTex(size, draw, repeat){
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  draw(c.getContext('2d'), size);
+  const t = new THREE.CanvasTexture(c);
+  t.anisotropy = 8;
+  if (repeat){ t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat, repeat); }
+  return t;
+}
+function bevel(g, s, w = 5, a = .3){
+  g.fillStyle = 'rgba(255,255,255,' + a + ')'; g.fillRect(0, 0, s, w); g.fillRect(0, 0, w, s);
+  g.fillStyle = 'rgba(0,0,0,' + (a * .8) + ')'; g.fillRect(0, s - w, s, w); g.fillRect(s - w, 0, w, s);
+}
+function specks(g, s, r, n, alpha){
+  for (let i = 0; i < n; i++){
+    g.fillStyle = r() < .5 ? 'rgba(255,255,255,' + alpha + ')' : 'rgba(0,0,0,' + alpha + ')';
+    g.fillRect(r() * s, r() * s, 3 + r() * 12, 3 + r() * 9);
+  }
+}
+function drawBricks(g, s, brick, mortar, rows, cols, seed){
+  const r = mulberry32(seed);
+  g.fillStyle = mortar; g.fillRect(0, 0, s, s);
+  const h = s / rows, w = s / cols;
+  for (let i = 0; i < rows; i++){
+    const off = (i % 2) * w / 2;
+    for (let j = -1; j <= cols; j++){
+      const x = j * w + off + 1.5, y = i * h + 1.5;
+      g.fillStyle = brick; g.fillRect(x, y, w - 3, h - 3);
+      g.fillStyle = r() < .5 ? 'rgba(255,255,255,' + (r() * .12) + ')' : 'rgba(0,0,0,' + (r() * .12) + ')';
+      g.fillRect(x, y, w - 3, h - 3);
+      g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(x, y, w - 3, 2);
+    }
+  }
+}
+function drawPlank(g, s, extra){
+  const r = mulberry32(9);
+  g.fillStyle = '#e2b99d'; g.fillRect(0, 0, s, s); specks(g, s, r, 90, .05);
+  g.fillStyle = 'rgba(255,255,255,.4)'; g.fillRect(0, 0, s, 6); g.fillRect(0, 0, 6, s);
+  g.fillStyle = 'rgba(120,70,50,.28)'; g.fillRect(0, s - 6, s, 6); g.fillRect(s - 6, 0, 6, s);
+  g.strokeStyle = '#b88b70'; g.lineWidth = 3; g.strokeRect(1.5, 1.5, s - 3, s - 3);
+  [[16,16],[s-16,16],[16,s-16],[s-16,s-16]].forEach(p => {
+    g.fillStyle = '#9d7560'; g.beginPath(); g.arc(p[0], p[1], 4.5, 0, 7); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.5)'; g.beginPath(); g.arc(p[0] - 1, p[1] - 1, 1.8, 0, 7); g.fill();
+  });
+  if (extra) extra(g, s);
+}
+
+const TEX = {
+  stone: canvasTex(128, (g, s) => {
+    const r = mulberry32(3); g.fillStyle = '#9a97b0'; g.fillRect(0, 0, s, s);
+    specks(g, s, r, 220, .07); bevel(g, s, 6, .28);
+    g.strokeStyle = '#6b6885'; g.lineWidth = 3; g.strokeRect(1.5, 1.5, s - 3, s - 3);
+  }),
+  stoneTop: canvasTex(128, (g, s) => {
+    const r = mulberry32(4); g.fillStyle = '#bab7cf'; g.fillRect(0, 0, s, s);
+    specks(g, s, r, 200, .06); bevel(g, s, 6, .3);
+    g.strokeStyle = '#8c89a6'; g.lineWidth = 3; g.strokeRect(1.5, 1.5, s - 3, s - 3);
+  }),
+  redbrick: canvasTex(128, (g, s) => { drawBricks(g, s, '#a8433c', '#5e2b2b', 6, 3, 11); }),
+  terra: canvasTex(128, (g, s) => { drawBricks(g, s, '#d38d6b', '#a8664e', 5, 2, 5); bevel(g, s, 3, .15); }),
+  grassTop: canvasTex(128, (g, s) => {
+    const r = mulberry32(21); g.fillStyle = '#86c94f'; g.fillRect(0, 0, s, s);
+    for (let i = 0; i < 160; i++){
+      g.fillStyle = r() < .5 ? 'rgba(255,255,255,.12)' : 'rgba(40,100,20,.16)';
+      g.beginPath(); g.arc(r() * s, r() * s, 2 + r() * 6, 0, 7); g.fill();
+    }
+    bevel(g, s, 4, .18);
+  }),
+  grassSide: canvasTex(128, (g, s) => {
+    drawBricks(g, s, '#d38d6b', '#a8664e', 5, 2, 5);
+    g.fillStyle = '#74bd42'; g.beginPath(); g.moveTo(0, 0); g.lineTo(s, 0);
+    for (let x = s; x >= 0; x -= 8) g.lineTo(x, 26 + Math.sin(x * .35) * 7);
+    g.closePath(); g.fill();
+    g.fillStyle = 'rgba(255,255,255,.2)'; g.fillRect(0, 0, s, 6);
+  }),
+  plank: canvasTex(128, (g, s) => drawPlank(g, s)),
+  slider: canvasTex(128, (g, s) => drawPlank(g, s, (g2, s2) => {
+    g2.strokeStyle = '#a98068'; g2.lineWidth = 10; g2.beginPath(); g2.arc(s2 / 2, s2 / 2, 27, 0, 7); g2.stroke();
+    g2.strokeStyle = 'rgba(255,255,255,.35)'; g2.lineWidth = 3; g2.beginPath(); g2.arc(s2 / 2 - 1, s2 / 2 - 1, 31, 3.4, 5); g2.stroke();
+  })),
+  goal: canvasTex(128, (g, s) => drawPlank(g, s, (g2, s2) => {
+    g2.fillStyle = '#c4937a'; g2.beginPath();
+    for (let i = 0; i < 10; i++){
+      const a = -Math.PI / 2 + i * Math.PI / 5, rad = i % 2 ? 14 : 32;
+      g2.lineTo(s2 / 2 + Math.cos(a) * rad, s2 / 2 + Math.sin(a) * rad);
+    }
+    g2.closePath(); g2.fill();
+  })),
+  tile: canvasTex(64, (g, s) => {
+    g.fillStyle = '#86d6da'; g.fillRect(0, 0, s, s);
+    g.strokeStyle = '#5db7bf'; g.lineWidth = 3; g.strokeRect(0, 0, s, s);
+    g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(4, 4, s - 8, 6);
+  }, 12),
+  water: canvasTex(256, (g, s) => {
+    const r = mulberry32(77); g.clearRect(0, 0, s, s);
+    for (let i = 0; i < 34; i++){
+      const x = r() * s, y = r() * s, len = 30 + r() * 60;
+      g.strokeStyle = 'rgba(255,255,255,' + (.18 + r() * .25) + ')'; g.lineWidth = 2 + r() * 3; g.lineCap = 'round';
+      [-s, 0, s].forEach(dx => [-s, 0, s].forEach(dy => {
+        g.beginPath(); g.moveTo(x + dx, y + dy);
+        g.quadraticCurveTo(x + dx + len / 2, y + dy - 8, x + dx + len, y + dy); g.stroke();
+      }));
+    }
+  }, 3)
+};
+
+const M = {};
+Object.keys(TEX).forEach(k => { M[k] = new THREE.MeshLambertMaterial({ map: TEX[k] }); });
+const six = m => [m, m, m, m, m, m];
+const BLOCK_MATS = {
+  stone:    [M.stone, M.stone, M.stoneTop, M.stone, M.stone, M.stone],
+  redbrick: six(M.redbrick),
+  terra:    six(M.terra),
+  grass:    [M.grassSide, M.grassSide, M.grassTop, M.terra, M.grassSide, M.grassSide],
+  plank:    six(M.plank),
+  slider:   six(M.slider),
+  goal:     six(M.goal)
+};
+
+/* =====================================================================
+   3) DÜNYA: sabit ortam (zemin + su)
+   ===================================================================== */
+const envGroup = new THREE.Group(); scene.add(envGroup);
+(function buildEnvironment(){
+  const sideTex = TEX.terra.clone(); sideTex.needsUpdate = true;
+  sideTex.wrapS = sideTex.wrapT = THREE.RepeatWrapping; sideTex.repeat.set(12, 1);
+  const sideMat = new THREE.MeshLambertMaterial({ map: sideTex });
+  const slab = new THREE.Mesh(new THREE.BoxGeometry(12, 1, 12),
+    [sideMat, sideMat, M.tile, sideMat, sideMat, sideMat]);
+  slab.position.set(5.5, -0.5, 5.5); slab.receiveShadow = true; slab.castShadow = true;
+  envGroup.add(slab);
+
+  const vol = new THREE.Mesh(new THREE.BoxGeometry(9.96, 0.55, 9.96),
+    new THREE.MeshLambertMaterial({ color: 0x5fd0e6, transparent: true, opacity: 0.42, depthWrite: false }));
+  vol.position.set(5.5, 0.275, 5.5); vol.renderOrder = 2; envGroup.add(vol);
+
+  const surf = new THREE.Mesh(new THREE.PlaneGeometry(9.96, 9.96),
+    new THREE.MeshBasicMaterial({ map: TEX.water, transparent: true, opacity: 0.5, depthWrite: false }));
+  surf.rotation.x = -Math.PI / 2; surf.position.set(5.5, 0.556, 5.5); surf.renderOrder = 3;
+  envGroup.add(surf);
+  envGroup.userData.surf = surf;
+})();
+
+/* =====================================================================
+   4) BÖLÜM VERİSİ + BLOK HARİTASI
+   ===================================================================== */
+const blockGroup = new THREE.Group(); scene.add(blockGroup);
+const propsGroup = new THREE.Group(); scene.add(propsGroup);
+const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+const blocks = new Map();   // "x,y,z" -> {x,y,z,type,walk}
+
+let LEVEL = null, levelIndex = 0;
+
+function addBlockMesh(x, y, z, type){
+  const m = new THREE.Mesh(boxGeo, BLOCK_MATS[type]);
+  m.position.set(x, y + 0.5, z);
+  m.castShadow = true; m.receiveShadow = true;
+  m.userData.b = { x, y, z };
+  blockGroup.add(m);
+  return m;
+}
+function put(x, y, z, type, walk){
+  blocks.set(KEY(x, y, z), { x, y, z, type, walk: !!walk });
+  addBlockMesh(x, y, z, type);
+}
+// Zeminden T yüksekliğine kadar sütun; sadece en üst blok yürünebilir
+function col(x, z, T, cap, body = 'stone', walk = true){
+  for (let y = 0; y < T; y++){
+    const top = y === T - 1;
+    const type = top ? cap : (typeof body === 'function' ? body(y) : body);
+    put(x, y, z, type, top && walk);
+  }
+}
+const redBand = (lo, hi) => y => (y >= lo && y <= hi) ? 'redbrick' : 'stone';
+
+// ---------- Ortak inşa yardımcıları ----------
+function rim(){
+  const N = 12;
+  for (let i = 0; i < N; i++){
+    [[i, 0], [i, N - 1], [0, i], [N - 1, i]].forEach(p => {
+      if (!blocks.has(KEY(p[0], 0, p[1]))) put(p[0], 0, p[1], 'terra', false);
+    });
+  }
+}
+const island = cells => cells.forEach(c => col(c[0], c[1], 1, 'grass'));
+const planks = cells => cells.forEach(c => col(c[0], c[1], 1, 'plank'));
+const mound  = (x, z) => col(x, z, 2, 'grass', 'terra');
+const stairs = list => list.forEach(s => col(s[0], s[1], s[2], 'stone'));
+const deck   = (cells, h) => cells.forEach(c => col(c[0], c[1], h, 'plank'));
+// Yürünmeyen süs kulesi (köşelerde mazgal)
+function tower(x0, z0, w, d, h, band){
+  for (let x = x0; x < x0 + w; x++) for (let z = z0; z < z0 + d; z++){
+    col(x, z, h, 'stone', band && (x + z) % 2 === 0 ? redBand(band[0], band[1]) : 'stone', false);
+  }
+  [[x0, z0], [x0 + w - 1, z0], [x0, z0 + d - 1], [x0 + w - 1, z0 + d - 1]].forEach(c => {
+    if (!blocks.has(KEY(c[0], h, c[1]))) put(c[0], h, c[1], 'stone', false);
+  });
+}
+const BLUE = 0x3d8bff, ORANGE = 0xff9f1a, PURPLE = 0xa066ff;
+
+// ---------- BÖLÜMLER ----------
+const LEVELS = [
+  /* 1 — KOLAY: tek düğme, tek köprü */
+  {
+    name: 'Köprü Kuleleri', diff: 'Kolay',
+    hint: 'İpucu: mavi düğme iki kuleyi bağlayan köprüyü açar.',
+    start: { x: 1, y: 0, z: 9 }, goal: { x: 10, y: 6, z: 4 },
+    plates: [
+      { x: 9, y: 1, z: 9, color: BLUE, bridge: [{ x: 5, y: 6, z: 4 }, { x: 6, y: 6, z: 4 }, { x: 7, y: 6, z: 4 }] }
+    ],
+    build(){
+      rim();
+      island([[1,9],[2,9],[1,10],[2,10]]);
+      planks([[3,10],[4,10],[5,10],[6,10],[7,10]]);
+      island([[8,10],[9,10],[8,9]]); mound(9, 9);
+      planks([[1,8],[1,7]]);
+      stairs([[1,6,2],[2,6,3],[3,6,4],[4,6,5],[4,5,6],[4,4,7]]);
+      // Sol kule
+      for (let x = 2; x <= 3; x++) for (let z = 3; z <= 5; z++){
+        let body = 'stone';
+        if (x === 3 && z === 3) body = redBand(2, 7);
+        if (x === 2 && z === 5) body = redBand(4, 7);
+        col(x, z, 9, 'stone', body, false);
+      }
+      [[2,3],[3,3],[2,5],[3,5]].forEach(p => put(p[0], 9, p[1], 'stone', false));
+      // Sağ kule
+      for (let x = 8; x <= 9; x++) for (let z = 2; z <= 3; z++){
+        let body = 'stone';
+        if (x === 9 && z === 2) body = redBand(2, 7);
+        if (z === 3) body = y => (y >= 7 ? 'redbrick' : 'stone');
+        col(x, z, 9, 'stone', body, false);
+      }
+      [[8,2],[9,2],[8,3],[9,3]].forEach(p => put(p[0], 9, p[1], 'stone', false));
+      col(8, 4, 7, 'stone', redBand(2, 5));
+      col(9, 4, 7, 'stone', redBand(2, 5));
+      put(10, 6, 4, 'goal', true);
+      put(10, 6, 5, 'plank', true);
+    }
+  },
+
+  /* 2 — ORTA: iki düğme zinciri, çıkmaz yol */
+  {
+    name: 'Çifte Anahtar', diff: 'Orta',
+    hint: 'İpucu: mavi düğme alt köprüyü, turuncu düğme yüksekteki köprüyü açar. Kuzeydeki yol çıkmaz.',
+    start: { x: 1, y: 0, z: 10 }, goal: { x: 9, y: 4, z: 2 },
+    plates: [
+      { x: 7, y: 1, z: 9, color: BLUE,   bridge: [{ x: 6, y: 0, z: 8 }, { x: 6, y: 0, z: 7 }] },
+      { x: 3, y: 4, z: 2, color: ORANGE, bridge: [{ x: 5, y: 4, z: 2 }, { x: 6, y: 4, z: 2 }, { x: 7, y: 4, z: 2 }] }
+    ],
+    build(){
+      rim();
+      island([[1,9],[2,9],[1,10],[2,10]]);
+      planks([[3,10],[4,10],[5,10]]);
+      island([[6,10],[7,10],[6,9]]); mound(7, 9);
+      island([[6,6],[5,6],[6,5],[5,5]]);
+      planks([[1,8],[1,7],[1,6]]); island([[1,5],[2,5]]);          // çıkmaz kol
+      stairs([[4,5,2],[4,4,3],[4,3,4]]);
+      deck([[4,2],[3,2]], 5);                                       // turuncu düğme platformu
+      deck([[8,2]], 5); col(9, 2, 5, 'goal');
+      tower(1, 1, 2, 3, 9, [2, 6]);
+      tower(8, 1, 3, 1, 7); tower(8, 3, 3, 1, 7); tower(10, 2, 1, 1, 7);
+    }
+  },
+
+  /* 3 — ZOR: üç düğme, uzun dikey rota, inişler */
+  {
+    name: 'Üç Düğme', diff: 'Zor',
+    hint: 'İpucu: renkli çizgiler köprülerin yerini gösterir. Bir yerde yukarı çıkıp tekrar aşağı inmen gerekecek.',
+    start: { x: 1, y: 0, z: 10 }, goal: { x: 1, y: 5, z: 4 },
+    plates: [
+      { x: 7, y: 1, z: 9, color: BLUE,   bridge: [{ x: 7, y: 0, z: 8 }, { x: 7, y: 0, z: 7 }] },
+      { x: 8, y: 4, z: 2, color: ORANGE, bridge: [{ x: 7, y: 4, z: 2 }, { x: 6, y: 4, z: 2 }, { x: 5, y: 4, z: 2 }] },
+      { x: 4, y: 1, z: 8, color: PURPLE, bridge: [{ x: 2, y: 1, z: 7 }, { x: 1, y: 2, z: 7 }, { x: 1, y: 3, z: 6 }, { x: 1, y: 4, z: 5 }] }
+    ],
+    build(){
+      rim();
+      island([[1,9],[2,9],[1,10],[2,10]]);
+      planks([[3,10],[4,10],[5,10]]);
+      island([[6,10],[7,10],[6,9]]); mound(7, 9);
+      island([[7,6],[8,6],[7,5],[8,5]]);
+      planks([[9,6],[10,6]]);                                       // çıkmaz kol
+      stairs([[9,5,2],[9,4,3],[9,3,4]]);
+      deck([[9,2],[8,2]], 5);                                       // turuncu düğme platformu
+      deck([[4,2],[3,2],[4,3],[3,3]], 5);                           // orta platform
+      stairs([[3,4,4],[3,5,3],[3,6,2]]);                            // aşağı iniş
+      island([[3,7],[4,7],[3,8]]); mound(4, 8);                     // mor düğme adası
+      col(1, 4, 6, 'goal');
+      tower(1, 1, 3, 1, 8); tower(1, 3, 2, 1, 6); tower(2, 4, 1, 1, 6);
+      tower(8, 1, 3, 1, 8); tower(10, 2, 1, 2, 7);
+    }
+  },
+
+  /* 4 — UZMAN: uzaktaki düğme başlangıç yakınındaki köprüyü açar */
+  {
+    name: 'Geri Dönüş', diff: 'Uzman',
+    hint: 'İpucu: bazı düğmeler çok uzaktaki köprüleri açar — başa dönmen gerekebilir.',
+    start: { x: 1, y: 0, z: 10 }, goal: { x: 10, y: 6, z: 3 },
+    plates: [
+      { x: 7, y: 1, z: 9, color: BLUE,   bridge: [{ x: 1, y: 0, z: 8 }, { x: 1, y: 0, z: 7 }] },
+      { x: 2, y: 4, z: 2, color: ORANGE, bridge: [{ x: 4, y: 4, z: 2 }, { x: 5, y: 4, z: 2 }, { x: 6, y: 4, z: 2 }] },
+      { x: 8, y: 4, z: 2, color: PURPLE, bridge: [{ x: 9, y: 5, z: 2 }, { x: 9, y: 6, z: 3 }] }
+    ],
+    build(){
+      rim();
+      island([[1,9],[2,9],[1,10],[2,10]]);
+      planks([[3,10],[4,10],[5,10]]);
+      island([[6,10],[7,10],[6,9]]); mound(7, 9);
+      planks([[6,8],[6,7]]); island([[6,6],[5,6]]);                 // çıkmaz kol
+      island([[1,6],[2,6],[1,5],[2,5]]);                            // batı adası
+      stairs([[3,5,2],[3,4,3],[3,3,4]]);
+      deck([[3,2],[2,2]], 5);                                       // turuncu düğme platformu
+      deck([[7,2],[8,2]], 5);                                       // mor düğme platformu
+      col(10, 3, 7, 'goal');
+      tower(1, 1, 3, 1, 8); tower(1, 2, 1, 1, 7); tower(1, 3, 2, 1, 7);
+      tower(7, 1, 3, 1, 8); tower(7, 3, 2, 1, 6);
+      tower(10, 2, 1, 1, 7); tower(10, 4, 1, 1, 7);
+    }
+  }
+];
+
+function buildBlocks(){
+  blockGroup.clear(); blocks.clear();
+  LEVEL.build();
+}
+
+/* =====================================================================
+   5) YOL BULMA (blok tabanlı BFS: ±1 yükseklik adımı)
+   ===================================================================== */
+let overlay = null;   // çözücü için: henüz inşa edilmemiş köprü blokları
+const getB = (x, y, z) => blocks.get(KEY(x, y, z)) || (overlay && overlay.get(KEY(x, y, z))) || null;
+const isEmpty = (x, y, z) => !getB(x, y, z);
+function isWalk(x, y, z){
+  const b = getB(x, y, z);
+  return !!b && b.walk && isEmpty(x, y + 1, z);
+}
+function neighbors(n){
+  const res = [];
+  for (const d of DIRS){
+    const nx = n.x + d[0], nz = n.z + d[1];
+    for (const dy of [0, 1, -1]){
+      const ty = n.y + dy;
+      if (!isWalk(nx, ty, nz)) continue;
+      if (dy === 1 && !isEmpty(n.x, n.y + 2, n.z)) continue;
+      res.push({ x: nx, y: ty, z: nz });
+      break;
+    }
+  }
+  return res;
+}
+const same = (a, b) => a && b && a.x === b.x && a.y === b.y && a.z === b.z;
+function bfs(start, target){
+  if (same(start, target)) return [];
+  const sk = KEY(start.x, start.y, start.z);
+  const prev = new Map([[sk, null]]);
+  const q = [start];
+  while (q.length){
+    const cur = q.shift();
+    for (const nb of neighbors(cur)){
+      const k = KEY(nb.x, nb.y, nb.z);
+      if (prev.has(k)) continue;
+      prev.set(k, cur);
+      if (same(nb, target)){
+        const path = [nb]; let p = cur;
+        while (p && !same(p, start)){ path.unshift(p); p = prev.get(KEY(p.x, p.y, p.z)); }
+        return path;
+      }
+      q.push(nb);
+    }
+  }
+  return null;
+}
+function resolveTarget(b){
+  if (isWalk(b.x, b.y, b.z)) return { x: b.x, y: b.y, z: b.z };
+  let best = null;
+  for (let y = 0; y < 16; y++){
+    if (isWalk(b.x, y, b.z) && (!best || Math.abs(y - b.y) < Math.abs(best.y - b.y))) best = { x: b.x, y, z: b.z };
+  }
+  return best;
+}
+
+const plateAt = n => LEVEL.plates.findIndex(p => p.x === n.x && p.y === n.y && p.z === n.z);
+
+// Bir düğümden (dx,dz) yönüne adım: 'walk' (yürünür), 'wall' (engel), 'fall' (boşluk/su)
+function stepStatus(n, dx, dz){
+  const nb = neighbors(n).find(m => m.x === n.x + dx && m.z === n.z + dz);
+  if (nb) return { kind: 'walk', nb };
+  const x = n.x + dx, z = n.z + dz;
+  if (blocks.has(KEY(x, n.y, z)) || blocks.has(KEY(x, n.y + 1, z)) || blocks.has(KEY(x, n.y - 1, z))) return { kind: 'wall' };
+  return { kind: 'fall', x, z };
+}
+
+// En kısa çözüm (adım): durum = (konum, basılan düğmeler)
+function solveLevel(){
+  const np = LEVEL.plates.length, full = (1 << np) - 1, overlays = [];
+  for (let m = 0; m <= full; m++){
+    const o = new Map();
+    LEVEL.plates.forEach((pl, i) => {
+      if (m & (1 << i)) pl.bridge.forEach(b => o.set(KEY(b.x, b.y, b.z), { x: b.x, y: b.y, z: b.z, type: 'slider', walk: true }));
+    });
+    overlays.push(o);
+  }
+  const saved = overlay;
+  const sk = (n, m) => n.x + ',' + n.y + ',' + n.z + '|' + m;
+  const seen = new Set([sk(LEVEL.start, 0)]);
+  const q = [{ n: LEVEL.start, m: 0, d: 0 }];
+  let result = null;
+  for (let h = 0; h < q.length; h++){
+    const cur = q[h];
+    if (same(cur.n, LEVEL.goal)){ result = cur.d; break; }
+    overlay = overlays[cur.m];
+    for (const nb of neighbors(cur.n)){
+      let m = cur.m; const pi = plateAt(nb); if (pi >= 0) m |= 1 << pi;
+      const k = sk(nb, m); if (seen.has(k)) continue;
+      seen.add(k); q.push({ n: nb, m, d: cur.d + 1 });
+    }
+  }
+  overlay = saved;
+  return result;
+}
+
+/* =====================================================================
+   6) ROBOT MODELİ
+   ===================================================================== */
+const robot = new THREE.Group(); scene.add(robot);
+const parts = {};
+(function makeRobot(){
+  const rig = new THREE.Group(); robot.add(rig); parts.rig = rig;
+  const mat = (c, e) => new THREE.MeshLambertMaterial({ color: c, emissive: e || 0x000000 });
+  const yellow = mat(0xf4b73a), orange = mat(0xdd931f), gray = mat(0x7a808c), white = mat(0xf6f6f8), dark = mat(0x1f2430);
+  const cyan = new THREE.MeshBasicMaterial({ color: 0x8affea });
+  const add = (geo, m, x, y, z, parent) => {
+    const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; (parent || rig).add(o); return o;
+  };
+
+  // Bacaklar
+  const legGeo = new THREE.CylinderGeometry(.07, .08, .2, 12), footGeo = new THREE.BoxGeometry(.16, .07, .24);
+  const mkLeg = sx => {
+    const p = new THREE.Group(); p.position.set(sx * .11, .2, 0); rig.add(p);
+    add(legGeo, gray, 0, -.08, 0, p); add(footGeo, gray, 0, -.17, .03, p); return p;
+  };
+  parts.legL = mkLeg(-1); parts.legR = mkLeg(1);
+
+  // Gövde + kemer
+  add(new THREE.CylinderGeometry(.2, .23, .3, 24), yellow, 0, .36, 0);
+  add(new THREE.CylinderGeometry(.235, .235, .035, 24), orange, 0, .27, 0);
+  add(new THREE.BoxGeometry(.14, .1, .04), dark, 0, .38, .215);
+
+  // Kollar
+  const armGeo = new THREE.CylinderGeometry(.05, .05, .2, 10), handGeo = new THREE.SphereGeometry(.06, 12, 10);
+  const mkArm = sx => {
+    const p = new THREE.Group(); p.position.set(sx * .27, .47, 0); rig.add(p);
+    add(armGeo, gray, 0, -.09, 0, p); add(handGeo, yellow, 0, -.2, 0, p); return p;
+  };
+  parts.armL = mkArm(-1); parts.armR = mkArm(1);
+
+  // Kafa
+  const head = new THREE.Group(); head.position.set(0, .68, 0); rig.add(head); parts.head = head;
+  add(new THREE.SphereGeometry(.24, 28, 20), white, 0, 0, 0, head);
+  const visor = add(new THREE.SphereGeometry(.17, 20, 14), dark, 0, .01, .16, head); visor.scale.set(1.05, .8, .5);
+  parts.eyeL = add(new THREE.SphereGeometry(.035, 10, 8), cyan, -.07, .03, .235, head);
+  parts.eyeR = add(new THREE.SphereGeometry(.035, 10, 8), cyan,  .07, .03, .235, head);
+  [-1, 1].forEach(sx => {
+    const ear = add(new THREE.CylinderGeometry(.075, .075, .06, 16), yellow, sx * .245, 0, 0, head);
+    ear.rotation.z = Math.PI / 2;
+  });
+  add(new THREE.CylinderGeometry(.015, .015, .14, 8), gray, 0, .29, 0, head);
+  add(new THREE.SphereGeometry(.035, 10, 8), mat(0xff5a4d, 0x660000), 0, .37, 0, head);
+
+  robot.scale.setScalar(0.78);
+})();
+
+/* =====================================================================
+   7) OYUN NESNELERİ (mavi düğme, kırmızı hedef, hayalet köprü, işaretçiler)
+   ===================================================================== */
+const P = { plates: [] };   // props
+function buildProps(){
+  propsGroup.clear(); P.plates = [];
+  const baseMat = new THREE.MeshLambertMaterial({ color: 0x8a8fa0 });
+  const edges = new THREE.EdgesGeometry(boxGeo);
+
+  // Renkli düğmeler + henüz açılmamış köprüler için hayalet çizgiler
+  LEVEL.plates.forEach(pl => {
+    const g = new THREE.Group(); g.position.set(pl.x, pl.y + 1.0, pl.z);
+    const pbase = new THREE.Mesh(new THREE.CylinderGeometry(.36, .4, .06, 32), baseMat);
+    pbase.position.y = .03; pbase.castShadow = true; pbase.receiveShadow = true;
+    const mat = new THREE.MeshLambertMaterial({ color: pl.color });
+    const color = new THREE.Color(pl.color);
+    mat.emissive.copy(color).multiplyScalar(.4);
+    const btn = new THREE.Mesh(new THREE.CylinderGeometry(.26, .26, .07, 32), mat);
+    btn.position.y = .085; btn.castShadow = true;
+    g.add(pbase, btn); propsGroup.add(g);
+
+    const ghostMat = new THREE.LineBasicMaterial({ color: pl.color, transparent: true, opacity: .7 });
+    const ghosts = new THREE.Group();
+    pl.bridge.forEach(b => {
+      const l = new THREE.LineSegments(edges, ghostMat);
+      l.position.set(b.x, b.y + .5, b.z); l.scale.setScalar(.96); ghosts.add(l);
+    });
+    propsGroup.add(ghosts);
+    P.plates.push({ group: g, btn, mat, color, ghostMat, ghosts, pressed: false });
+  });
+
+  // Kırmızı hedef düğmesi + ışık huzmesi
+  const g = LEVEL.goal;
+  P.goal = new THREE.Group(); P.goal.position.set(g.x, g.y + 1.0, g.z);
+  const gbase = new THREE.Mesh(new THREE.CylinderGeometry(.36, .4, .08, 32), baseMat);
+  gbase.position.y = .04; gbase.castShadow = true;
+  P.goalMat = new THREE.MeshLambertMaterial({ color: 0xff3b30, emissive: 0xff1a1a });
+  P.goalBtn = new THREE.Mesh(new THREE.CylinderGeometry(.27, .27, .1, 32), P.goalMat);
+  P.goalBtn.position.y = .12; P.goalBtn.castShadow = true;
+  P.beamMat = new THREE.MeshBasicMaterial({ color: 0xff4a3a, transparent: true, opacity: .2, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(.14, .14, 5, 24, 1, true), P.beamMat);
+  beam.position.y = 2.6; beam.renderOrder = 4;
+  const glow = new THREE.PointLight(0xff5544, .7, 6); glow.position.y = .7;
+  P.goal.add(gbase, P.goalBtn, beam, glow); propsGroup.add(P.goal);
+}
+
+// İşaretçiler (sahne kökünde, level yenilense de kalır)
+const ringGeo = new THREE.RingGeometry(.27, .38, 36); ringGeo.rotateX(-Math.PI / 2);
+const targetMarker = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffa726, transparent: true, opacity: .95, depthWrite: false }));
+const hoverMarker  = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .75, depthWrite: false }));
+targetMarker.visible = hoverMarker.visible = false; targetMarker.renderOrder = hoverMarker.renderOrder = 5;
+scene.add(targetMarker, hoverMarker);
+const ripple = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: 0xcff6ff, transparent: true, opacity: .8, depthWrite: false }));
+ripple.visible = false; ripple.renderOrder = 5; ripple.userData.t = 0; scene.add(ripple);
+
+/* =====================================================================
+   8) KONFETİ
+   ===================================================================== */
+const confetti = [];
+const confGeo = new THREE.BoxGeometry(.12, .04, .08);
+for (let i = 0; i < 100; i++){
+  const m = new THREE.Mesh(confGeo, new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  m.visible = false; scene.add(m);
+  confetti.push({ m, v: new THREE.Vector3(), w: new THREE.Vector3(), life: 0 });
+}
+function burst(pos, palette, n = 70){
+  let k = 0;
+  for (const c of confetti){
+    if (k >= n) break; if (c.life > 0) continue;
+    c.life = 1.6 + Math.random() * 1.2; c.m.visible = true; c.m.position.copy(pos);
+    c.m.material.color.setHex(palette[(Math.random() * palette.length) | 0]);
+    const a = Math.random() * Math.PI * 2, s = 1.5 + Math.random() * 3.2;
+    c.v.set(Math.cos(a) * s, 3 + Math.random() * 4, Math.sin(a) * s);
+    c.w.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
+    k++;
+  }
+}
+function updateConfetti(dt){
+  for (const c of confetti){
+    if (c.life <= 0) continue;
+    c.life -= dt; c.v.y -= 9 * dt;
+    c.m.position.addScaledVector(c.v, dt);
+    c.m.rotation.x += c.w.x * dt; c.m.rotation.y += c.w.y * dt; c.m.rotation.z += c.w.z * dt;
+    if (c.life <= 0) c.m.visible = false;
+  }
+}
+
+/* =====================================================================
+   9) OYUN DURUMU + ROBOT HAREKETİ
+   ===================================================================== */
+const state = { started: false, paused: false, completed: false, failed: false, pressed: [], steps: 0, time: 0, par: 0 };
+const R = { node: null, from: null, to: null, t: 0, dur: .3, path: [], moving: false,
+            face: Math.PI / 4, targetFace: Math.PI / 4, phase: 0, walkAmt: 0, time: 0, celeb: 0, fall: null, afterFall: null };
+const anims = [];
+let elapsed = 0;
+
+function nodePos(n){
+  const off = same(n, LEVEL.goal) ? 0.1 : 0;
+  return new THREE.Vector3(n.x, n.y + 1 + off, n.z);
+}
+function placeRobot(n){
+  R.node = { x: n.x, y: n.y, z: n.z }; R.path = []; R.moving = false; R.celeb = 0;
+  R.fall = null; R.afterFall = null; ripple.visible = false;
+  R.face = R.targetFace = Math.PI / 4;
+  robot.position.copy(nodePos(n)); robot.rotation.y = R.face;
+  parts.rig.rotation.set(0, 0, 0); parts.rig.position.y = 0;
+}
+function hud(){
+  $('#steps').textContent = state.steps;
+  const total = LEVEL.plates.length, got = state.pressed.filter(Boolean).length;
+  const chip = $('#bridgeChip');
+  chip.innerHTML = '🔘 Düğme: <b>' + got + '/' + total + '</b>';
+  chip.classList.toggle('ok', got === total);
+  $('#levelChip').innerHTML = '🏰 Bölüm ' + (levelIndex + 1) + ': <b>' + LEVEL.name + '</b> · ' + LEVEL.diff;
+}
+
+function startPathTo(target){
+  const origin = R.moving ? R.path[0] : R.node;
+  const p = bfs(origin, target);
+  if (p === null){ toast('Oraya giden bir yol yok…', 1800); beep(160, .15, 'square', .03); return false; }
+  if (R.moving) R.path = [R.path[0]].concat(p); else R.path = p;
+  if (p.length || R.moving){
+    targetMarker.position.set(target.x, target.y + 1.03, target.z); targetMarker.visible = true;
+  }
+  return true;
+}
+
+let failTimer = null;
+
+function tryStepOff(dx, dz){
+  const st = stepStatus(R.node, dx, dz);
+  if (st.kind !== 'fall') return false;
+  startFall(dx, dz, st.x, st.z);
+  return true;
+}
+function startFall(dx, dz, x, z){
+  const n = R.node;
+  let land = null;
+  for (let y = n.y - 2; y >= 0; y--) if (blocks.has(KEY(x, y, z))){ land = y + 1; break; }
+  const water = land === null;
+  R.path = []; R.moving = false; R.afterFall = null;
+  targetMarker.visible = hoverMarker.visible = false;
+  state.failed = true;
+  R.face = R.targetFace = Math.atan2(dx, dz); robot.rotation.y = R.face;
+  R.fall = { t: 0, t2: 0, phase: 0, vy: 0, from: robot.position.clone(), dir: new THREE.Vector3(dx, 0, dz),
+             endY: water ? 0.5 : land, water, shown: false };
+  sweep(560, 150, .9, 'sine', .05);
+}
+function splash(pos){
+  burst(new THREE.Vector3(pos.x, .6, pos.z), [0x9fe6ff, 0xffffff, 0x5fd0e6], 36);
+  ripple.position.set(pos.x, .575, pos.z); ripple.visible = true; ripple.userData.t = 0;
+  beep(200, .25, 'sawtooth', .05); beep(130, .4, 'sine', .07, .04); beep(900, .08, 'triangle', .03, .02);
+}
+function updateRipple(dt){
+  if (!ripple.visible) return;
+  const t = (ripple.userData.t += dt);
+  ripple.scale.set(1 + t * 5, 1, 1 + t * 5);
+  ripple.material.opacity = Math.max(0, .8 - t * .7);
+  if (t > 1.2) ripple.visible = false;
+}
+function showFail(water){
+  $('#failTitle').textContent = water ? '💦 Suya düştün!' : '😵 Boşluğa düştün!';
+  $('#failed').classList.add('show');
+  clearTimeout(failTimer); failTimer = setTimeout(restart, 2400);
+}
+function updateFall(dt){
+  const f = R.fall; f.t += dt;
+  // çaresiz çırpınma
+  const fl = Math.sin(f.t * 22) * .5;
+  parts.armL.rotation.z = -2.5 + fl; parts.armR.rotation.z = 2.5 - fl;
+  parts.armL.rotation.x = parts.armR.rotation.x = 0;
+  parts.legL.rotation.x = Math.sin(f.t * 20) * .8; parts.legR.rotation.x = -Math.sin(f.t * 20) * .8;
+  parts.eyeL.scale.y = parts.eyeR.scale.y = 1.5;
+
+  if (f.phase === 0){                              // kenardan taşma
+    const k = Math.min(f.t / .22, 1);
+    robot.position.set(f.from.x + f.dir.x * .62 * k, f.from.y, f.from.z + f.dir.z * .62 * k);
+    parts.rig.rotation.x = k * .5;
+    if (k >= 1){ f.phase = 1; f.vy = 0; }
+  } else if (f.phase === 1){                       // serbest düşüş
+    f.vy -= 24 * dt;
+    robot.position.y += f.vy * dt;
+    robot.position.x += f.dir.x * .9 * dt; robot.position.z += f.dir.z * .9 * dt;
+    parts.rig.rotation.x += dt * 5;
+    if (robot.position.y <= f.endY){
+      robot.position.y = f.endY; f.phase = 2; f.t2 = 0;
+      if (f.water) splash(robot.position); else { beep(90, .18, 'square', .07); beep(60, .25, 'sine', .08, .03); }
+    }
+  } else {                                         // suya batış / yere çakılma
+    f.t2 += dt;
+    if (f.water){
+      robot.position.y = f.endY - Math.min(f.t2 * .5, .42) + Math.sin(f.t2 * 7) * .015;
+      parts.rig.rotation.x += dt * 1.2;
+    }
+    if (f.t2 > .9 && !f.shown){ f.shown = true; showFail(f.water); }
+  }
+}
+
+function updateRobot(dt){
+  R.time += dt;
+  if (R.fall){ updateFall(dt); return; }
+  if (!R.moving && R.path.length){
+    R.from = R.node; R.to = R.path[0]; R.t = 0; R.moving = true;
+    R.targetFace = Math.atan2(R.to.x - R.from.x, R.to.z - R.from.z);
+    R.dur = 0.3 + (R.to.y !== R.from.y ? 0.06 : 0);
+  }
+  if (R.moving){
+    R.t += dt / R.dur;
+    const t = Math.min(R.t, 1);
+    const a = nodePos(R.from), b = nodePos(R.to);
+    robot.position.lerpVectors(a, b, t);
+    const dy = b.y - a.y;
+    robot.position.y += Math.sin(Math.PI * t) * (dy > .5 ? .22 : dy < -.5 ? .12 : .06);
+    if (R.t >= 1){
+      R.moving = false; R.node = { x: R.to.x, y: R.to.y, z: R.to.z }; R.path.shift();
+      robot.position.copy(nodePos(R.node));
+      state.steps++; hud(); onArrive(R.node);
+    }
+  }
+  // Yön yumuşatma
+  let d = R.targetFace - R.face; d = Math.atan2(Math.sin(d), Math.cos(d));
+  R.face += d * Math.min(1, dt * 14); robot.rotation.y = R.face;
+
+  // Uzuv animasyonu
+  R.walkAmt += ((R.moving ? 1 : 0) - R.walkAmt) * Math.min(1, dt * 12);
+  R.phase += dt * 16 * R.walkAmt;
+  const sw = Math.sin(R.phase) * .8 * R.walkAmt;
+  parts.legL.rotation.x = sw; parts.legR.rotation.x = -sw;
+  let bob = Math.abs(Math.sin(R.phase)) * .04 * R.walkAmt + Math.sin(R.time * 2.2) * .012 * (1 - R.walkAmt);
+  parts.head.rotation.y = Math.sin(R.time * .7) * .35 * (1 - R.walkAmt);
+  const blink = (Math.sin(R.time * 1.3) > .985) ? .1 : 1;
+  parts.eyeL.scale.y = parts.eyeR.scale.y = blink;
+
+  if (state.completed){
+    R.celeb += dt;
+    if (R.celeb < 2.4){
+      bob += Math.abs(Math.sin(R.celeb * 7)) * .28;
+      parts.rig.rotation.y += dt * 8 * (1 - R.celeb / 2.4);
+      parts.armL.rotation.z = -2.6; parts.armR.rotation.z = 2.6; parts.armL.rotation.x = parts.armR.rotation.x = 0;
+    } else { parts.rig.rotation.y = 0; }
+  } else {
+    parts.armL.rotation.z = parts.armR.rotation.z = 0;
+    parts.armL.rotation.x = -sw * .9; parts.armR.rotation.x = sw * .9;
+  }
+  parts.rig.position.y = bob;
+}
+
+function onArrive(n){
+  beep(250 + Math.random() * 50, .05, 'triangle', .03);
+  if (R.path.length === 0) targetMarker.visible = false;
+  const pi = plateAt(n);
+  if (pi >= 0 && !state.pressed[pi]) pressSwitch(pi);
+  if (same(n, LEVEL.goal) && !state.completed) completeLevel();
+  if (R.afterFall && R.path.length === 0 && !state.completed){ const a = R.afterFall; R.afterFall = null; tryStepOff(a.dx, a.dz); }
+}
+
+function pressSwitch(i){
+  const pl = LEVEL.plates[i], pp = P.plates[i];
+  state.pressed[i] = true; hud();
+  pp.pressed = true; pp.btn.position.y = .045;
+  pp.mat.color.setHex(0x3ddc84); pp.mat.emissive.setHex(0x14a85a);
+  pp.ghosts.visible = false;
+  beep(440, .12, 'sine', .06); beep(660, .12, 'sine', .06, .1); beep(880, .2, 'sine', .06, .2);
+  const left = state.pressed.filter(v => !v).length;
+  toast('🌉 Düğmeye basıldı — köprü uzanıyor!' + (left ? ' (' + left + ' düğme kaldı)' : ''));
+  burst(pp.group.position.clone().add(new THREE.Vector3(0, .3, 0)), [pl.color, 0x9fd3ff, 0xffffff], 30);
+  pl.bridge.forEach((seg, k) => {
+    const mesh = addBlockMesh(seg.x, seg.y, seg.z, 'slider');
+    mesh.scale.setScalar(.001);
+    anims.push({ delay: .4 + k * .25, t: 0, dur: .45, mesh, seg });
+  });
+}
+function updateAnims(dt){
+  for (let i = anims.length - 1; i >= 0; i--){
+    const a = anims[i]; a.delay -= dt; if (a.delay > 0) continue;
+    a.t += dt / a.dur; const k = Math.min(a.t, 1);
+    a.mesh.scale.setScalar(Math.max(.001, easeOutBack(k)));
+    if (k >= 1){
+      blocks.set(KEY(a.seg.x, a.seg.y, a.seg.z), { x: a.seg.x, y: a.seg.y, z: a.seg.z, type: 'slider', walk: true });
+      beep(300, .06, 'square', .03);
+      anims.splice(i, 1);
+    }
+  }
+}
+
+const SAVE_KEY = 'mekanikKuleler.v2';
+let progress = { stars: [] };
+try{
+  const sv = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+  if (sv && Array.isArray(sv.stars)) progress = sv;
+}catch(e){}
+function saveProgress(i, stars){
+  progress.stars[i] = Math.max(progress.stars[i] || 0, stars);
+  try{ localStorage.setItem(SAVE_KEY, JSON.stringify(progress)); }catch(e){}
+}
+
+function completeLevel(){
+  state.completed = true; R.celeb = 0; targetMarker.visible = false;
+  P.goalBtn.position.y = .07;
+  [523, 659, 784, 1047].forEach((f, i) => beep(f, .25, 'sine', .06, i * .12));
+  burst(P.goal.position.clone().add(new THREE.Vector3(0, .6, 0)), [0xff5a4d, 0xffc42e, 0x4aa8ff, 0x7be06b, 0xffffff], 100);
+  setTimeout(() => burst(P.goal.position.clone().add(new THREE.Vector3(0, .8, 0)), [0xff5a4d, 0xffc42e, 0x4aa8ff, 0xffffff], 60), 600);
+  const stars = state.steps <= state.par + 2 ? 3 : state.steps <= state.par * 1.4 ? 2 : 1;
+  saveProgress(levelIndex, stars);
+  const m = Math.floor(state.time / 60), s = Math.floor(state.time % 60);
+  $('#stats').innerHTML = 'Adım: <b>' + state.steps + '</b> &nbsp;•&nbsp; Süre: <b>' + m + ':' + String(s).padStart(2, '0') + '</b><br><span style="opacity:.7;font-size:13px">En kısa yol: ' + state.par + ' adım</span>';
+  const last = levelIndex >= LEVELS.length - 1;
+  $('#completeTitle').textContent = last ? '🏆 Tüm Bölümler Tamamlandı!' : '🎉 Bölüm Tamamlandı!';
+  $('#btnNext').style.display = last ? 'none' : '';
+  const spans = document.querySelectorAll('#stars span');
+  spans.forEach(sp => sp.classList.remove('on'));
+  $('#complete').classList.add('show');
+  spans.forEach((sp, i) => { if (i < stars) setTimeout(() => sp.classList.add('on'), 500 + i * 300); });
+}
+
+/* =====================================================================
+   10) YÜKLE / YENİDEN BAŞLAT
+   ===================================================================== */
+function loadLevel(i){
+  if (i !== undefined) levelIndex = i;
+  LEVEL = LEVELS[levelIndex];
+  anims.length = 0;
+  buildBlocks(); buildProps();
+  clearTimeout(failTimer); state.failed = false;
+  state.completed = false; state.pressed = LEVEL.plates.map(() => false);
+  state.steps = 0; state.time = 0; state.par = solveLevel() || 0;
+  confetti.forEach(c => { c.life = 0; c.m.visible = false; });
+  targetMarker.visible = hoverMarker.visible = false;
+  placeRobot(LEVEL.start);
+  $('#complete').classList.remove('show'); $('#failed').classList.remove('show');
+  hud();
+}
+
+/* =====================================================================
+   11) GİRDİ: tıklama, hover, klavye
+   ===================================================================== */
+const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
+function pick(e){
+  const r = dom.getBoundingClientRect();
+  ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects(blockGroup.children, false);
+  return hits.length ? hits[0].object.userData.b : null;
+}
+const canPlay = () => state.started && !state.paused && !state.completed && !state.failed;
+
+let down = null;
+dom.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, t: performance.now() }; hoverMarker.visible = false; });
+dom.addEventListener('pointerup', e => {
+  if (!down) return;
+  const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y), dt = performance.now() - down.t;
+  down = null;
+  if (moved < 6 && dt < 600) handleClick(e);
+});
+function handleClick(e){
+  if (!canPlay()) return;
+  try{ actx && actx.state === 'suspended' && actx.resume(); }catch(_){}
+  const b = pick(e);
+  if (!b){ const c = pickWater(e); if (c) walkThenFall(c); return; }
+  const t = resolveTarget(b);
+  if (!t){ toast('Buraya çıkılamaz', 1500); return; }
+  R.afterFall = null;
+  startPathTo(t);
+}
+// Suya tıklanırsa: en yakın kenara yürü ve suya atla
+const waterPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.5);
+function pickWater(e){
+  const pt = new THREE.Vector3();
+  if (!ray.ray.intersectPlane(waterPlane, pt)) return null;
+  const cx = Math.round(pt.x), cz = Math.round(pt.z);
+  return (cx >= 1 && cx <= 10 && cz >= 1 && cz <= 10) ? { x: cx, z: cz } : null;
+}
+function walkThenFall(cell){
+  const origin = R.moving ? R.path[0] : R.node;
+  const seen = new Set([KEY(origin.x, origin.y, origin.z)]), list = [origin];
+  for (let h = 0; h < list.length; h++) for (const nb of neighbors(list[h])){
+    const k = KEY(nb.x, nb.y, nb.z); if (seen.has(k)) continue;
+    seen.add(k); list.push(nb);
+  }
+  let best = null;
+  for (const n of list){
+    const ddx = cell.x - n.x, ddz = cell.z - n.z, d = Math.abs(ddx) + Math.abs(ddz);
+    if (d === 0) continue;
+    const opts = Math.abs(ddx) >= Math.abs(ddz) ? [[Math.sign(ddx), 0], [0, Math.sign(ddz)]] : [[0, Math.sign(ddz)], [Math.sign(ddx), 0]];
+    for (const o of opts){
+      if (!o[0] && !o[1]) continue;
+      if (stepStatus(n, o[0], o[1]).kind !== 'fall') continue;
+      if (!best || d < best.d) best = { n, d, dx: o[0], dz: o[1] };
+      break;
+    }
+  }
+  if (!best){ toast('Oraya atlayamazsın', 1500); return; }
+  if (!startPathTo(best.n)) return;
+  R.afterFall = { dx: best.dx, dz: best.dz };
+  if (!R.moving && R.path.length === 0){ R.afterFall = null; tryStepOff(best.dx, best.dz); }
+}
+let hoverQueued = false;
+dom.addEventListener('pointermove', e => {
+  if (e.pointerType !== 'mouse' || e.buttons || hoverQueued || !canPlay()) return;
+  hoverQueued = true;
+  requestAnimationFrame(() => {
+    hoverQueued = false;
+    const b = pick(e); const t = b && resolveTarget(b);
+    if (t && !same(t, R.node) && bfs(R.moving ? R.path[0] : R.node, t) !== null){
+      hoverMarker.position.set(t.x, t.y + 1.03, t.z); hoverMarker.visible = true; dom.style.cursor = 'pointer';
+    } else { hoverMarker.visible = false; dom.style.cursor = 'default'; }
+  });
+});
+dom.addEventListener('pointerleave', () => { hoverMarker.visible = false; });
+
+// Klavye: kameraya göre ızgara hareketi
+const keysDown = []; let fallArmed = false;
+const KEYMAP = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' };
+function keyDir(k){
+  const f = new THREE.Vector3(); camera.getWorldDirection(f); f.y = 0; f.normalize();
+  const r = new THREE.Vector3(-f.z, 0, f.x);
+  let v = k === 'up' ? f : k === 'down' ? f.clone().negate() : k === 'right' ? r : r.clone().negate();
+  return Math.abs(v.x) >= Math.abs(v.z) ? [Math.sign(v.x), 0] : [0, Math.sign(v.z)];
+}
+function keyboardStep(){
+  if (!canPlay() || !keysDown.length || R.moving || R.path.length) return;
+  const d = keyDir(keysDown[keysDown.length - 1]);
+  const st = stepStatus(R.node, d[0], d[1]);
+  if (st.kind === 'walk'){ R.path = [st.nb]; targetMarker.visible = false; R.afterFall = null; fallArmed = false; }
+  else if (st.kind === 'fall' && fallArmed){ fallArmed = false; startFall(d[0], d[1], st.x, st.z); }
+}
+window.addEventListener('keydown', e => {
+  if (e.code === 'Escape' || e.code === 'KeyP'){ togglePause(); return; }
+  if (e.code === 'KeyR'){ restart(); return; }
+  const k = KEYMAP[e.code];
+  if (k){ e.preventDefault(); if (!e.repeat) fallArmed = true; if (!keysDown.includes(k)) keysDown.push(k); }
+});
+window.addEventListener('keyup', e => {
+  const k = KEYMAP[e.code]; if (k){ const i = keysDown.indexOf(k); if (i >= 0) keysDown.splice(i, 1); }
+});
+window.addEventListener('blur', () => { keysDown.length = 0; });
+
+/* =====================================================================
+   12) ARAYÜZ OLAYLARI
+   ===================================================================== */
+function togglePause(force){
+  if (!state.started || state.completed || state.failed) return;
+  state.paused = force !== undefined ? force : !state.paused;
+  $('#pauseMenu').classList.toggle('show', state.paused);
+  controls.enabled = !state.paused;
+  if (state.paused) hoverMarker.visible = false;
+}
+function restart(){
+  state.paused = false; controls.enabled = true;
+  $('#pauseMenu').classList.remove('show');
+  loadLevel(levelIndex);
+  if (state.started) toast(LEVEL.hint, 3600);
+}
+function startLevel(i){
+  state.started = true; state.paused = false; controls.enabled = true;
+  ['#intro', '#pauseMenu', '#levels'].forEach(sel => $(sel).classList.remove('show'));
+  try{ actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); }catch(_){}
+  loadLevel(i);
+  beep(520, .1, 'sine', .05); beep(780, .14, 'sine', .05, .08);
+  toast(LEVEL.hint, 4600);
+}
+function showLevels(){
+  const grid = $('#lvgrid'); grid.innerHTML = '';
+  LEVELS.forEach((lv, i) => {
+    const st = progress.stars[i] || 0;
+    const b = document.createElement('button'); b.className = 'lv';
+    b.innerHTML = '<span class="n">' + (i + 1) + '</span><b>' + lv.name + '</b>' +
+      '<em class="d d' + i + '">' + lv.diff + '</em>' +
+      '<span class="s">' + '★'.repeat(st) + '<i>' + '★'.repeat(3 - st) + '</i></span>';
+    b.addEventListener('click', () => startLevel(i));
+    grid.appendChild(b);
+  });
+  $('#levels').classList.add('show');
+}
+$('#btnPause').addEventListener('click', () => togglePause());
+$('#btnResume').addEventListener('click', () => togglePause(false));
+$('#btnRestart').addEventListener('click', restart);
+$('#btnRestart2').addEventListener('click', restart);
+$('#btnAgain').addEventListener('click', restart);
+$('#btnRetry').addEventListener('click', restart);
+$('#btnNext').addEventListener('click', () => startLevel(Math.min(levelIndex + 1, LEVELS.length - 1)));
+['#btnLevels', '#btnLevels2', '#btnLevels3'].forEach(sel => $(sel).addEventListener('click', showLevels));
+$('#btnLevelsBack').addEventListener('click', () => $('#levels').classList.remove('show'));
+$('#btnPlay').addEventListener('click', () => {
+  let i = 0;
+  while (i < LEVELS.length - 1 && (progress.stars[i] || 0) > 0) i++;   // kaldığın bölümden devam
+  startLevel(i);
+});
+
+/* =====================================================================
+   13) ANA DÖNGÜ
+   ===================================================================== */
+const clock = new THREE.Clock();
+function animateProps(){
+  envGroup.userData.surf.material.map.offset.set(elapsed * .02, elapsed * .012);
+  if (P.goalMat){
+    const k = .5 + .5 * Math.sin(elapsed * 3);
+    P.goalMat.emissive.setRGB(.5 + .5 * k, .05, .05);
+    P.beamMat.opacity = (state.completed ? .38 : .14) + .1 * k;
+  }
+  P.plates.forEach((pp, i) => {
+    if (pp.pressed) return;
+    const k = .5 + .5 * Math.sin(elapsed * 4 + i * 1.3);
+    pp.mat.emissive.copy(pp.color).multiplyScalar(.3 + .35 * k);
+    pp.ghostMat.opacity = .35 + .45 * k;
+  });
+  if (targetMarker.visible){
+    const s = 1 + .12 * Math.sin(elapsed * 8); targetMarker.scale.set(s, 1, s);
+  }
+}
+function loop(){
+  requestAnimationFrame(loop);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  if (!state.paused){
+    elapsed += dt;
+    if (state.started && !state.completed) state.time += dt;
+    keyboardStep(); updateRobot(dt); updateAnims(dt); updateConfetti(dt); updateRipple(dt); animateProps();
+  }
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+// Uygulama arka plana gidince oyunu duraklat
+document.addEventListener('visibilitychange', () => { if (document.hidden) togglePause(true); });
+
+loadLevel(0);
+loop();
+
+})();
+</script>
+</body>
+</html>
